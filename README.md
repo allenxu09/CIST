@@ -1,6 +1,10 @@
-## Introduction
-Just a Nutrimatic rework in chinese idioms.
-## Copyright
+# Introduction
+Just a Nutrimatic rework in Chinese idioms.
+
+## What is Nutrimatic?
+Nutrimatic is a tool developed by PuzzleTechHub, which is designated to solve unknown words / wordle-like questions using matching rules. This chinese rework version demonstrates an example of using such rules to match ***Chinese Idioms***, not english vocabs/phrases. Hope you enjoy using the tool!
+
+# Copyright
 For Database of Idioms in the `res` folder,
 
 ```
