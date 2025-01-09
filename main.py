@@ -1,36 +1,44 @@
-import sqlite3
+import json
 import re
 from fastapi import FastAPI, HTTPException
 import time
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Load JSON data
+try:
+    with open('res/idiom.json', 'r', encoding='utf-8') as file:
+        idioms = json.load(file)
+except Exception as e:
+    raise RuntimeError(f"Error loading JSON file: {str(e)}")
+
+# Function to remove tones from pinyin
+def remove_tones(pinyin):
+    tone_map = str.maketrans("āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜü", "aaaaeeeeiiiioooouuuuvvvvv")
+    return pinyin.translate(tone_map)
 
 def search_items(expr: str):
     try:
-        # Connect to the database
-        conn = sqlite3.connect('res/main.db')
-        cursor = conn.cursor()
+        # Remove tones from input expression
+        expr_no_tones = remove_tones(expr)
+        pattern = re.compile(expr_no_tones)
 
-        # Prepare the SQL query
-        query = "SELECT py1, py2, py3, py4, char1, char2, char3, char4 FROM idiom"
-        cursor.execute(query)
-
-        # Fetch all items
-        items = cursor.fetchall()
-
-        # Concatenate py1, py2, py3, py4 into a single string with spaces
-        concatenated_items = [(' '.join(item[:4]), item[4:]) for item in items]
-
-        # Filter items using the regular expression
-        pattern = re.compile(expr)
-        filtered_items = [chars for py, chars in concatenated_items if pattern.search(py)]
-
-        # Combine the characters into a single string
-        filtered_items = [''.join(chars) for chars in filtered_items]
+        filtered_items = [
+            item["word"]
+            for item in idioms
+            if pattern.search(remove_tones(item["pinyin"]))
+        ]
         return filtered_items
-    except sqlite3.Error as e:
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        conn.close()
 
 def match(expr: str):
     # Convert the input expression to a regex
@@ -38,16 +46,16 @@ def match(expr: str):
     result = expr
     result = result.replace('"', '\\b')  # Replace " with word boundaries
     result = result.replace('*', '\\S{1,6}')  # Replace * with a non-whitespace syllable of length 2 to 6
-    #result = result.replace(' ', '\\s+')  # Ensure spaces between syllables are handled correctly
+    result = result.replace(' ', '\\s+')  # Ensure spaces between syllables are handled correctly
     result = result.replace('?', '\\S')
     return result
 
-@app.get("/")
+@app.post("/")
 async def getRoot():
-    #return time now
+    # Return current time
     return {"result": time.time()}
 
-@app.get("/get/{expr}")
+@app.post("/get/{expr}")
 async def getResults(expr: str):
     # Pass the expression through the match function
     regex_pattern = match(expr)
