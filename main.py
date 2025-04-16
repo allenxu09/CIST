@@ -238,11 +238,10 @@ def evaluate_query(node, item):
 
 def search_mixed(query: str):
     # 检查查询是否包含逻辑运算符
-    if "&&" in query or "||" in query or "{" in query:
+    if "&&" in query or "||" in query or "(" in query:
         try:
             # 解析查询表达式
             query_tree = parse_query(query)
-            print(f"Parsed query tree: {query_tree}")
 
             # 评估并收集结果
             results = []
@@ -258,7 +257,6 @@ def search_mixed(query: str):
     if has_number_tone(query):
         converted = convert_number_to_tone(query)
         query, tone = converted[0], converted[1]
-
     result = search_by_regex(query)
 
     # 声调过滤
@@ -285,14 +283,13 @@ def search_by_explanation(query: str, exact_match: bool = False):
 
     return [item for item in idioms if "explanation" in item and query in item["explanation"]]
 
-
 def translate_normal_to_regex(pattern: str):
     pattern = pattern.replace('"', '\\b')
     pattern = pattern.replace('#', '\\b\\S{1,6}\\b')
     pattern = pattern.replace('@', '\\S')
+    pattern = pattern.replace('%', '\\S{1,4}')
     pattern = pattern.replace(' ', '\\s+')
     return pattern
-
 
 def search_by_regex(pattern: str):
     try:
@@ -306,7 +303,6 @@ def search_by_regex(pattern: str):
         return results
     except re.error:
         raise HTTPException(status_code=400, detail="无效的正则表达式")
-
 
 @app.get("/")
 async def get_root():

@@ -27,7 +27,7 @@ class LeafNode(Node):
 
 # MODIFIED: GroupNode representation
 class GroupNode(Node):
-    """节点表示由 {} 包裹的项序列"""
+    """节点表示由 () 包裹的项序列"""
     def __init__(self, items):
         self.items = items
 
@@ -57,14 +57,19 @@ def tokenize(query: str) -> list:
         elif query[i:i + 2] == "||":
             tokens.append("||")
             i += 2
-        elif char in "{}":
+        elif char in "()":
             tokens.append(char)
             i += 1
         elif char.isspace():
             i += 1
         else:
             start = i
-            while i < len(query) and not query[i].isspace() and query[i] not in "{}" and query[i:i + 2] not in ["&&", "||"]:
+            while (
+                i < len(query)
+                and not query[i].isspace()
+                and query[i] not in "()"
+                and query[i : i + 2] not in ["&&", "||"]
+            ):
                 i += 1
             tokens.append(query[start:i])
 
@@ -73,7 +78,7 @@ def tokenize(query: str) -> list:
 
 def parse_expression(tokens, pos=0):
     """解析表达式"""
-    if pos >= len(tokens) or tokens[pos] == '}':
+    if pos >= len(tokens) or tokens[pos] == ')':
         return None, pos
 
     left, pos = parse_term(tokens, pos)
@@ -81,7 +86,7 @@ def parse_expression(tokens, pos=0):
         return None, pos
 
     while pos < len(tokens):
-        if tokens[pos] == "}":
+        if tokens[pos] == ")":
             break
 
         op_type = None
@@ -91,26 +96,25 @@ def parse_expression(tokens, pos=0):
             operator_token = tokens[pos]
             op_type = "AND" if operator_token == "&&" else "OR"
             pos += 1
-        elif tokens[pos] != "}":
-             if tokens[pos] not in ["&&", "||"]:
-                 op_type = "AND" # Default to AND connection
-             else:
-                 raise ValueError(f"无效的查询结构：在位置 {pos} 处遇到意外的标记 '{tokens[pos]}'")
+        elif tokens[pos] != ")":
+            if tokens[pos] not in ["&&", "||"]:
+                op_type = "AND"  # 默认使用 AND
+            else:
+                raise ValueError(f"无效的查询结构：在位置 {pos} 处遇到意外的标记 '{tokens[pos]}'")
 
         else:
-             break
-
+            break
 
         if op_type:
-            # Expecting a right operand next
-            if pos >= len(tokens) or tokens[pos] == '}':
-                 # Operator without a right operand before end or closing brace
-                 raise ValueError(f"无效的查询结构：在位置 {pos-1} 的运算符 '{operator_token or '隐式AND'}' 后缺少操作数")
+            # 下一个应当是右操作数
+            if pos >= len(tokens) or tokens[pos] == ')':
+                raise ValueError(
+                    f"无效的查询结构：在位置 {pos-1} 的运算符 '{operator_token or '隐式AND'}' 后缺少操作数"
+                )
 
             right, pos = parse_term(tokens, pos)
             if right is None:
-                 # parse_term failed to find a valid term
-                 raise ValueError(f"无效的查询结构：在位置 {pos} 处期望一个查询项或组")
+                raise ValueError(f"无效的查询结构：在位置 {pos} 处期望一个查询项或组")
 
             left = OperatorNode(op_type, left, right)
         else:
@@ -124,30 +128,27 @@ def parse_term(tokens, pos):
     if pos >= len(tokens):
         return None, pos
 
-    if tokens[pos] == "{":
-        pos += 1 # Consume '{'
+    if tokens[pos] == "(":
+        pos += 1  # 跳过 '('
         items = []
         start_group_pos = pos
-        # Collect all tokens within the braces until the matching '}'
-        while pos < len(tokens) and tokens[pos] != "}":
-            # Check if the item itself is an operator, which is invalid inside {} in this simple model
+        # 收集所有在括号内的标记直到匹配 ')'
+        while pos < len(tokens) and tokens[pos] != ")":
             if tokens[pos] in ["&&", "||"]:
-                raise ValueError(f"无效的查询结构：不允许在 {{}} 组内使用运算符 '{tokens[pos]}'")
+                raise ValueError(f"无效的查询结构：不允许在 () 组内使用运算符 '{tokens[pos]}'")
             items.append(tokens[pos])
             pos += 1
 
-        if pos < len(tokens) and tokens[pos] == "}":
-            pos += 1 # Consume '}'
+        if pos < len(tokens) and tokens[pos] == ")":
+            pos += 1  # 跳过 ')'
             if not items:
-                 raise ValueError("空的 {} 组是不允许的")
-            # Create a GroupNode with the collected item tokens
+                raise ValueError("空的 () 组是不允许的")
             return GroupNode(items), pos
         else:
-            # Missing closing brace
-            raise ValueError("缺少右括号 '}'")
-    # Check if it's an operator or closing brace - these shouldn't start a term
-    elif tokens[pos] in ["&&", "||", "}"]:
-         raise ValueError(f"无效的查询结构：在位置 {pos} 处遇到意外的标记 '{tokens[pos]}'")
+            raise ValueError("缺少右括号 ')'")
+
+    elif tokens[pos] in ["&&", "||", ")"]:
+        raise ValueError(f"无效的查询结构：在位置 {pos} 处遇到意外的标记 '{tokens[pos]}'")
     else:
-        # It's a regular leaf term
+        # 普通叶子
         return LeafNode(tokens[pos]), pos + 1
