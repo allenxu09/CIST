@@ -1,12 +1,10 @@
 import json
-import re
-from typing import List, Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Query
 import time
 from fastapi.middleware.cors import CORSMiddleware
-from enum import Enum
-from pydantic import BaseModel
 from tokenizer import *
+from schemas import *
+from crud import *
 
 app = FastAPI(title="成语搜索API", description="提供多种方式搜索中文成语")
 app.add_middleware(
@@ -16,10 +14,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# 去除拼音声调
-def remove_tones(pinyin):
-    tone_map = str.maketrans("āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜü", "aaaaeeeeiiiioooouuuuvvvvv")
-    return pinyin.translate(tone_map)
 
 # 加载JSON数据
 try:
@@ -62,81 +56,7 @@ for item in idioms:
                 explanation_index[word] = []
             explanation_index[word].append(item)
 
-# 拼音声调映射
-TONE_MARKS = {
-    'a': ['a', 'ā', 'á', 'ǎ', 'à'],
-    'e': ['e', 'ē', 'é', 'ě', 'è'],
-    'i': ['i', 'ī', 'í', 'ǐ', 'ì'],
-    'o': ['o', 'ō', 'ó', 'ǒ', 'ò'],
-    'u': ['u', 'ū', 'ú', 'ǔ', 'ù'],
-    'v': ['ü', 'ǖ', 'ǘ', 'ǚ', 'ǜ'],  # v用作ü
-}
 
-# 将数字声调转换为带声调拼音
-def convert_number_to_tone(pinyin_with_number):
-    result = []
-    sylla = []
-    i = 0
-    while i < len(pinyin_with_number):
-        # 查找拼音边界
-        j = i
-        while j < len(pinyin_with_number) and not pinyin_with_number[j].isdigit():
-            j += 1
-
-        syllable = pinyin_with_number[i:j]
-        # 检查是否有声调数字
-        if j < len(pinyin_with_number) and pinyin_with_number[j].isdigit():
-            tone = int(pinyin_with_number[j])
-            if 0 <= tone <= 4:  # 有效声调范围
-                # 查找应该声调的元音
-                for vowel in "aoeiuv":
-                    if vowel in syllable:
-                        vowel_pos = syllable.rfind(vowel)
-                        if vowel in TONE_MARKS:
-                            syllable = (syllable[:vowel_pos] +
-                                        TONE_MARKS[vowel][tone] +
-                                        syllable[vowel_pos + 1:])
-                            sylla.append(syllable[vowel_pos - 1:])
-                            break
-
-            i = j + 1
-
-        else:
-            i = j
-        result.append(syllable)
-
-    return [''.join(result),sylla]
-
-# 检查是否含有数字声调
-def has_number_tone(text):
-    # 检查是否为拼音声调标记（数字1-4紧跟在拼音字母后面）
-    pattern = re.compile(r'[a-zA-Z][1-4]')
-    return bool(pattern.search(text))
-
-# 是否是拼音字符（包括数字标记）
-def is_pinyin_char(char):
-    return char.isalpha() or char in 'āáǎàēéěèīíǐìōóǒòūúǔùǖǘǚǜü' or char.isdigit()
-
-class SearchType(str, Enum):
-    WORD = "word"
-    EXPLANATION = "explanation"
-    REGEX = "regex"
-    MIXED = "mixed"
-
-class SearchRequest(BaseModel):
-    query: str
-    search_type: SearchType = SearchType.MIXED
-    exact_match: bool = False
-    limit: int = 50
-    offset: int = 0
-
-class SearchResponse(BaseModel):
-    results: List[Dict[str, Any]]
-    total: int
-    offset: int
-    limit: int
-    query: str
-    search_type: str
 
 def search_single_term(query, item):
     """搜索单个词项"""
@@ -154,11 +74,9 @@ def search_single_term(query, item):
             # 有声调时需要进一步过滤
             if not tone:
                 return True
-
             for t in tone:
                 if t in str(item):
                     return True
-
             return False
         return False
     except re.error:
@@ -189,48 +107,8 @@ def evaluate_query(node, item):
             return left_result or right_result
 
     elif isinstance(node, GroupNode):
-
-        # 将组内所有项合并为单个查询字符串
-
         combined_query = ' '.join(node.items)
-
-        # 处理声调
-
-        tone = []
-
-        if has_number_tone(combined_query):
-            converted = convert_number_to_tone(combined_query)
-
-            combined_query, tone = converted[0], converted[1]
-
-        # 使用正则表达式匹配
-
-        try:
-
-            pattern = translate_normal_to_regex(remove_tones(combined_query))
-
-            regex = re.compile(pattern)
-
-            if regex.search(remove_tones(item["pinyin"])) or regex.search(item["word"]) or regex.search(item["pinyin"]):
-
-                # 声调过滤
-
-                if not tone:
-                    return True
-
-                for t in tone:
-
-                    if t in str(item):
-                        return True
-
-                return False
-
-            return False
-
-        except re.error:
-
-            return False
-
+        return search_single_term(combined_query, item)
     return False
 
 
@@ -281,13 +159,6 @@ def search_by_explanation(query: str, exact_match: bool = False):
 
     return [item for item in idioms if "explanation" in item and query in item["explanation"]]
 
-def translate_normal_to_regex(pattern: str):
-    pattern = pattern.replace('"', '\\b')
-    pattern = pattern.replace('#', '\\b\\S{1,6}\\b')
-    pattern = pattern.replace('@', '\\S')
-    pattern = pattern.replace('%', '\\S{1,4}')
-    pattern = pattern.replace(' ', '\\s+')
-    return pattern
 
 def search_by_regex(pattern: str):
     try:
@@ -297,7 +168,6 @@ def search_by_regex(pattern: str):
         for item in idioms:
             if regex.search(remove_tones(item["pinyin"])) or regex.search(item["word"]) or regex.search(item["pinyin"]):
                 results.append(item)
-
         return results
     except re.error:
         raise HTTPException(status_code=400, detail="无效的正则表达式")
@@ -305,7 +175,6 @@ def search_by_regex(pattern: str):
 @app.get("/")
 async def get_root():
     return {"message": "成语搜索API", "time": time.time()}
-
 
 @app.post("/search", response_model=SearchResponse)
 async def search(request: SearchRequest):
@@ -349,7 +218,6 @@ async def get_idiom_detail(word: str):
             return item
 
     raise HTTPException(status_code=404, detail=f"未找到成语: {word}")
-
 
 @app.get("/random", response_model=Dict[str, Any])
 async def get_random_idiom():
