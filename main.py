@@ -138,8 +138,6 @@ class SearchResponse(BaseModel):
     query: str
     search_type: str
 
-
-
 def search_single_term(query, item):
     """搜索单个词项"""
     tone = []
