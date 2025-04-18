@@ -2,6 +2,7 @@ import re
 import json
 from typing import List, Dict, Any, Tuple
 
+# Mapping of accented pinyin vowels to (base vowel, tone number)
 ACCENTED_MAP = {
     'ā': ('a', '1'), 'á': ('a', '2'), 'ǎ': ('a', '3'), 'à': ('a', '4'),
     'ē': ('e', '1'), 'é': ('e', '2'), 'ě': ('e', '3'), 'è': ('e', '4'),
@@ -28,9 +29,15 @@ class SeqNode(ASTNode):
         for idx, slot in enumerate(self.slots):
             if slot == '#':
                 continue
+            # Combined #[n]
             m_hash_stroke = re.match(r"^#\[(\d+)\]$", slot)
+            # Stroke-only [n]
             m_stroke_only = re.match(r"^\[(\d+)\]$", slot)
-            m_pinyin = re.match(r"^([a-z@]+)([1-5]?)(?:\[(\d+)\])?$", slot)
+            # Any-tone-only slot #3
+            m_hash_tone = re.match(r"^#([1-5])$", slot)
+            # PinyinPattern + optional tone + optional stroke
+            m_pinyin = re.match(r"^([a-z@%]+)([1-5]?)(?:\[(\d+)\])?$", slot)
+
             if m_hash_stroke:
                 req = int(m_hash_stroke.group(1))
                 if strokes[idx] != req:
@@ -39,10 +46,23 @@ class SeqNode(ASTNode):
                 req = int(m_stroke_only.group(1))
                 if strokes[idx] != req:
                     return False
+            elif m_hash_tone:
+                req_tone = m_hash_tone.group(1)
+                # ensure pinyin numeric part ends with this tone
+                if not pinyin_parts[idx].endswith(req_tone):
+                    return False
             elif m_pinyin:
                 pat, tone, stroke_str = m_pinyin.groups()
-                # build regex for pinyin: @ -> any letter
-                regex_pat = ''.join('[a-z]' if c=='@' else c for c in pat)
+                # build regex for pinyin: '@' -> any letter, '%' -> 1-4 letters
+                regex_parts = []
+                for c in pat:
+                    if c == '@':
+                        regex_parts.append('[a-z]')
+                    elif c == '%':
+                        regex_parts.append('[a-z]{1,4}')
+                    else:
+                        regex_parts.append(c)
+                regex_pat = ''.join(regex_parts)
                 tone_pattern = tone if tone else '[1-5]'
                 full_pattern = re.compile(f"^{regex_pat}{tone_pattern}$")
                 if not full_pattern.match(pinyin_parts[idx]):
@@ -70,7 +90,7 @@ class IdiomSearcher:
     def __init__(self, json_path: str):
         with open(json_path, 'r', encoding='utf-8') as f:
             self.idioms: List[Dict[str, Any]] = json.load(f)
-        # Convert diacritic pinyin to numeric parts
+        # Convert diacritic pinyin vowels to numeric parts
         for idiom in self.idioms:
             parts = idiom['pinyin'].split()
             numeric = []
@@ -112,7 +132,7 @@ class IdiomSearcher:
         token = tokens[pos]
         if token == '(':
             nxt = tokens[pos+1]
-            if re.match(r'^[#\[a-z@]', nxt):
+            if re.match(r'^[#\[a-z@%]', nxt):
                 # sequence
                 end = pos + 1
                 depth = 0
@@ -127,7 +147,6 @@ class IdiomSearcher:
                 slots = tokens[pos+1:end]
                 return SeqNode(slots), end+1
             else:
-                # grouped
                 node, newpos = self._parse(tokens, pos+1)
                 return node, newpos+1
         raise ValueError(f"Unexpected token: {token}")
@@ -145,7 +164,7 @@ class IdiomSearcher:
 
 # if __name__ == '__main__':
 #     searcher = IdiomSearcher('res/idioms.json')
-#     examples = ['(y@@[6] # # #) AND (# # # shang)', '(ni4 # #[10] #)']
+#     examples = ['(#3 # # #)', '(y% # # #)']
 #     for dsl in examples:
 #         print(f"DSL: {dsl}")
 #         for idiom in searcher.search(dsl):
