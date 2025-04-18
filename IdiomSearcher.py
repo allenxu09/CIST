@@ -31,37 +31,35 @@ class SeqNode(ASTNode):
         word = idiom['word']
         pinyin_parts = idiom.get('pinyin_numeric_parts', [])
         strokes = idiom['strokes']
+
         # Ensure same length
         if len(self.slots) != len(word) or len(pinyin_parts) != len(word):
             return False
+
         for idx, slot in enumerate(self.slots):
             if slot == '#':
                 continue
-            # Combined #[n]
+
             m_hash_stroke = re.match(r"^#\[(\d+)\]$", slot)
-            # Stroke-only [n]
             m_stroke_only = re.match(r"^\[(\d+)\]$", slot)
-            # Any-tone-only slot #3
             m_hash_tone = re.match(r"^#([1-5])$", slot)
-            # PinyinPattern + optional tone + optional stroke
             m_pinyin = re.match(r"^([a-z@%]+)([1-5]?)(?:\[(\d+)\])?$", slot)
 
             if m_hash_stroke:
-                req = int(m_hash_stroke.group(1))
-                if strokes[idx] != req:
+                if strokes[idx] != int(m_hash_stroke.group(1)):
                     return False
+
             elif m_stroke_only:
-                req = int(m_stroke_only.group(1))
-                if strokes[idx] != req:
+                if strokes[idx] != int(m_stroke_only.group(1)):
                     return False
+
             elif m_hash_tone:
-                req_tone = m_hash_tone.group(1)
-                # ensure pinyin numeric part ends with this tone
-                if not pinyin_parts[idx].endswith(req_tone):
+                if not pinyin_parts[idx].endswith(m_hash_tone.group(1)):
                     return False
+
             elif m_pinyin:
                 pat, tone, stroke_str = m_pinyin.groups()
-                # build regex for pinyin: '@' -> any letter, '%' -> 1-4 letters
+                # build regex for pinyin: '@' -> any letter; '%' -> 1-4 letters
                 regex_parts = []
                 for c in pat:
                     if c == '@':
@@ -70,27 +68,37 @@ class SeqNode(ASTNode):
                         regex_parts.append('[a-z]{1,4}')
                     else:
                         regex_parts.append(c)
-                regex_pat = ''.join(regex_parts)
+                regex_body = ''.join(regex_parts)
                 tone_pattern = tone if tone else '[1-5]'
-                full_pattern = re.compile(f"^{regex_pat}{tone_pattern}$")
-                if not full_pattern.match(pinyin_parts[idx]):
+                full_pattern = f"^{regex_body}{tone_pattern}$"
+                if not re.match(full_pattern, pinyin_parts[idx]):
                     return False
-                if stroke_str:
-                    if strokes[idx] != int(stroke_str):
-                        return False
+                if stroke_str and strokes[idx] != int(stroke_str):
+                    return False
+
             else:
                 return False
+
         return True
+
+class NotNode(ASTNode):
+    def __init__(self, child: ASTNode):
+        self.child = child
+
+    def match(self, idiom: Dict[str, Any]) -> bool:
+        return not self.child.match(idiom)
 
 class AndNode(ASTNode):
     def __init__(self, children: List[ASTNode]):
         self.children = children
+
     def match(self, idiom: Dict[str, Any]) -> bool:
         return all(child.match(idiom) for child in self.children)
 
 class OrNode(ASTNode):
     def __init__(self, children: List[ASTNode]):
         self.children = children
+
     def match(self, idiom: Dict[str, Any]) -> bool:
         return any(child.match(idiom) for child in self.children)
 
@@ -98,6 +106,7 @@ class IdiomSearcher:
     def __init__(self, json_path: str):
         with open(json_path, 'r', encoding='utf-8') as f:
             self.idioms: List[Dict[str, Any]] = json.load(f)
+
         # Convert diacritic pinyin vowels to numeric parts
         for idiom in self.idioms:
             parts = idiom['pinyin'].split()
@@ -112,37 +121,17 @@ class IdiomSearcher:
                         tone = t
                     else:
                         letters.append(ch)
-                base_token = ''.join(letters)
-                numeric.append(base_token + tone)
+                numeric.append(''.join(letters) + tone)
             idiom['pinyin_numeric_parts'] = numeric
 
     def _tokenize(self, dsl: str) -> List[str]:
         tokens = []
-        i = 0
-        L = len(dsl)
+        i, L = 0, len(dsl)
         while i < L:
             c = dsl[i]
             if c.isspace():
                 i += 1
                 continue
-            if c in '()':
-                tokens.append(c)
-                i += 1
-                continue
-            # 1) 扫描 /…/ 正则字面量
-            if c == '/':
-                j = i + 1
-                while j < L:
-                    # 遇到未被转义的 '/' 就结束
-                    if dsl[j] == '/' and dsl[j-1] != '\\':
-                        break
-                    j += 1
-                if j >= L:
-                    raise ValueError("Unterminated regex literal")
-                tokens.append(dsl[i:j+1])  # 包括两端的 '/'
-                i = j + 1
-                continue
-            # 2) AND / OR 关键字
             if dsl.startswith('AND', i) and (i+3 == L or not dsl[i+3].isalpha()):
                 tokens.append('AND')
                 i += 3
@@ -151,14 +140,29 @@ class IdiomSearcher:
                 tokens.append('OR')
                 i += 2
                 continue
-            # 3) 其它槽位或拼音模式，一直读到下一个空白或括号
+            if dsl.startswith('NOT', i) and (i+3 == L or not dsl[i+3].isalpha()):
+                tokens.append('NOT')
+                i += 3
+                continue
+            if c in '()':
+                tokens.append(c)
+                i += 1
+                continue
+            if c == '/':
+                j = i + 1
+                while j < L and not (dsl[j] == '/' and dsl[j-1] != '\\'):
+                    j += 1
+                if j >= L:
+                    raise ValueError('Unterminated regex literal')
+                tokens.append(dsl[i:j+1])
+                i = j + 1
+                continue
             j = i
             while j < L and not dsl[j].isspace() and dsl[j] not in '()':
                 j += 1
             tokens.append(dsl[i:j])
             i = j
         return tokens
-
 
     def _parse(self, tokens: List[str], pos: int = 0) -> Tuple[ASTNode, int]:
         node, pos = self._parse_term(tokens, pos)
@@ -177,22 +181,21 @@ class IdiomSearcher:
         return node, pos
 
     def _parse_factor(self, tokens: List[str], pos: int) -> Tuple[ASTNode, int]:
-        token = tokens[pos]
-        if token.startswith('/') and token.endswith('/'):
-            pattern = token[1:-1]
-            return RegexNode(pattern), pos + 1
-        if token == '(':
+        tok = tokens[pos]
+        if tok == 'NOT':
+            child, newpos = self._parse_factor(tokens, pos+1)
+            return NotNode(child), newpos
+        if tok.startswith('/') and tok.endswith('/'):
+            return RegexNode(tok[1:-1]), pos+1
+        if tok == '(':
             nxt = tokens[pos+1]
             if re.match(r'^[#\[a-z@%]', nxt):
-                # sequence
                 end = pos + 1
                 depth = 0
                 while end < len(tokens):
-                    if tokens[end] == '(':
-                        depth += 1
+                    if tokens[end] == '(': depth += 1
                     elif tokens[end] == ')':
-                        if depth == 0:
-                            break
+                        if depth == 0: break
                         depth -= 1
                     end += 1
                 slots = tokens[pos+1:end]
@@ -200,22 +203,24 @@ class IdiomSearcher:
             else:
                 node, newpos = self._parse(tokens, pos+1)
                 return node, newpos+1
-        raise ValueError(f"Unexpected token: {token}")
+        raise ValueError(f"Unexpected token: {tok}")
 
     def _compile_ast(self, dsl: str) -> ASTNode:
         tokens = self._tokenize(dsl)
         ast, pos = self._parse(tokens)
         if pos != len(tokens):
-            raise ValueError('Extra tokens')
+            raise ValueError('Extra tokens after parsing')
         return ast
 
     def search(self, dsl: str) -> List[Dict[str, Any]]:
         ast = self._compile_ast(dsl)
         return [idiom for idiom in self.idioms if ast.match(idiom)]
 
+# test purpose
+
 # if __name__ == '__main__':
 #     searcher = IdiomSearcher('res/idioms.json')
-#     examples = ['((# #[9] # #) AND (/zhan1 qin1/))']
+#     examples = ['(/zh/) AND NOT(#[7] # # #) AND NOT(#1 # # #)']
 #     for dsl in examples:
 #         print(f"DSL: {dsl}")
 #         for idiom in searcher.search(dsl):
