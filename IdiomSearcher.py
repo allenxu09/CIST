@@ -15,6 +15,14 @@ ACCENTED_MAP = {
 class ASTNode:
     pass
 
+class RegexNode(ASTNode):
+    def __init__(self, pattern: str):
+        self.pattern = re.compile(pattern)
+
+    def match(self, idiom: Dict[str, Any]) -> bool:
+        line = f"{idiom['word']}|{' '.join(idiom['pinyin_numeric_parts'])}|{'-'.join(map(str, idiom['strokes']))}"
+        return bool(self.pattern.search(line))
+
 class SeqNode(ASTNode):
     def __init__(self, slots: List[str]):
         self.slots = slots
@@ -109,8 +117,48 @@ class IdiomSearcher:
             idiom['pinyin_numeric_parts'] = numeric
 
     def _tokenize(self, dsl: str) -> List[str]:
-        spaced = dsl.replace('(', ' ( ').replace(')', ' ) ')
-        return spaced.split()
+        tokens = []
+        i = 0
+        L = len(dsl)
+        while i < L:
+            c = dsl[i]
+            if c.isspace():
+                i += 1
+                continue
+            if c in '()':
+                tokens.append(c)
+                i += 1
+                continue
+            # 1) 扫描 /…/ 正则字面量
+            if c == '/':
+                j = i + 1
+                while j < L:
+                    # 遇到未被转义的 '/' 就结束
+                    if dsl[j] == '/' and dsl[j-1] != '\\':
+                        break
+                    j += 1
+                if j >= L:
+                    raise ValueError("Unterminated regex literal")
+                tokens.append(dsl[i:j+1])  # 包括两端的 '/'
+                i = j + 1
+                continue
+            # 2) AND / OR 关键字
+            if dsl.startswith('AND', i) and (i+3 == L or not dsl[i+3].isalpha()):
+                tokens.append('AND')
+                i += 3
+                continue
+            if dsl.startswith('OR', i) and (i+2 == L or not dsl[i+2].isalpha()):
+                tokens.append('OR')
+                i += 2
+                continue
+            # 3) 其它槽位或拼音模式，一直读到下一个空白或括号
+            j = i
+            while j < L and not dsl[j].isspace() and dsl[j] not in '()':
+                j += 1
+            tokens.append(dsl[i:j])
+            i = j
+        return tokens
+
 
     def _parse(self, tokens: List[str], pos: int = 0) -> Tuple[ASTNode, int]:
         node, pos = self._parse_term(tokens, pos)
@@ -130,6 +178,9 @@ class IdiomSearcher:
 
     def _parse_factor(self, tokens: List[str], pos: int) -> Tuple[ASTNode, int]:
         token = tokens[pos]
+        if token.startswith('/') and token.endswith('/'):
+            pattern = token[1:-1]
+            return RegexNode(pattern), pos + 1
         if token == '(':
             nxt = tokens[pos+1]
             if re.match(r'^[#\[a-z@%]', nxt):
@@ -164,7 +215,7 @@ class IdiomSearcher:
 
 # if __name__ == '__main__':
 #     searcher = IdiomSearcher('res/idioms.json')
-#     examples = ['(#3 # # #)', '(y% # # #)']
+#     examples = ['((# #[9] # #) AND (/zhan1 qin1/))']
 #     for dsl in examples:
 #         print(f"DSL: {dsl}")
 #         for idiom in searcher.search(dsl):
