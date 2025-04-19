@@ -12,6 +12,16 @@ ACCENTED_MAP = {
     'ǖ': ('ü', '1'), 'ǘ': ('ü', '2'), 'ǚ': ('ü', '3'), 'ǜ': ('ü', '4')
 }
 
+# Initials and Finals for pinyin segmentation
+INITIALS = [
+    'b','p','m','f','d','t','n','l','g','k','h',
+    'j','q','x','zh','ch','sh','r','z','c','s','y','w'
+]
+FINALS = [
+    'a','o','e','i','u','ai','ei','ui','ao','ou','iu','ie','üe','er',
+    'an','en','in','un','ian','uan','üan','ang','eng','ing','ong'
+]
+
 class ASTNode:
     pass
 
@@ -32,7 +42,6 @@ class SeqNode(ASTNode):
         pinyin_parts = idiom.get('pinyin_numeric_parts', [])
         strokes = idiom['strokes']
 
-        # Ensure same length
         if len(self.slots) != len(word) or len(pinyin_parts) != len(word):
             return False
 
@@ -43,7 +52,7 @@ class SeqNode(ASTNode):
             m_hash_stroke = re.match(r"^#\[(\d+)\]$", slot)
             m_stroke_only = re.match(r"^\[(\d+)\]$", slot)
             m_hash_tone = re.match(r"^#([1-5])$", slot)
-            m_pinyin = re.match(r"^([a-z@%]+)([1-5]?)(?:\[(\d+)\])?$", slot)
+            m_pinyin = re.match(r"^([a-z@%?*]+)([1-5]?)(?:\[(\d+)\])?$", slot)
 
             if m_hash_stroke:
                 if strokes[idx] != int(m_hash_stroke.group(1)):
@@ -59,13 +68,16 @@ class SeqNode(ASTNode):
 
             elif m_pinyin:
                 pat, tone, stroke_str = m_pinyin.groups()
-                # build regex for pinyin: '@' -> any letter; '%' -> 1-4 letters
                 regex_parts = []
                 for c in pat:
                     if c == '@':
                         regex_parts.append('[a-z]')
                     elif c == '%':
                         regex_parts.append('[a-z]{1,4}')
+                    elif c == '?':
+                        regex_parts.append(f"(?:{'|'.join(INITIALS)})")
+                    elif c == '*':
+                        regex_parts.append(f"(?:{'|'.join(FINALS)})")
                     else:
                         regex_parts.append(c)
                 regex_body = ''.join(regex_parts)
@@ -107,7 +119,6 @@ class IdiomSearcher:
         with open(json_path, 'r', encoding='utf-8') as f:
             self.idioms: List[Dict[str, Any]] = json.load(f)
 
-        # Convert diacritic pinyin vowels to numeric parts
         for idiom in self.idioms:
             parts = idiom['pinyin'].split()
             numeric = []
@@ -183,26 +194,28 @@ class IdiomSearcher:
     def _parse_factor(self, tokens: List[str], pos: int) -> Tuple[ASTNode, int]:
         tok = tokens[pos]
         if tok == 'NOT':
-            child, newpos = self._parse_factor(tokens, pos+1)
+            child, newpos = self._parse_factor(tokens, pos + 1)
             return NotNode(child), newpos
         if tok.startswith('/') and tok.endswith('/'):
-            return RegexNode(tok[1:-1]), pos+1
+            return RegexNode(tok[1:-1]), pos + 1
         if tok == '(':
             nxt = tokens[pos+1]
-            if re.match(r'^[#\[a-z@%]', nxt):
+            if re.match(r'^[#\[a-z@%?*]', nxt):
                 end = pos + 1
                 depth = 0
                 while end < len(tokens):
-                    if tokens[end] == '(': depth += 1
+                    if tokens[end] == '(':
+                        depth += 1
                     elif tokens[end] == ')':
-                        if depth == 0: break
+                        if depth == 0:
+                            break
                         depth -= 1
                     end += 1
                 slots = tokens[pos+1:end]
-                return SeqNode(slots), end+1
+                return SeqNode(slots), end + 1
             else:
-                node, newpos = self._parse(tokens, pos+1)
-                return node, newpos+1
+                node, newpos = self._parse(tokens, pos + 1)
+                return node, newpos + 1
         raise ValueError(f"Unexpected token: {tok}")
 
     def _compile_ast(self, dsl: str) -> ASTNode:
@@ -216,13 +229,7 @@ class IdiomSearcher:
         ast = self._compile_ast(dsl)
         return [idiom for idiom in self.idioms if ast.match(idiom)]
 
-# test purpose
 
-# if __name__ == '__main__':
-#     searcher = IdiomSearcher('res/idioms.json')
-#     examples = ['(/zh/) AND NOT(#[7] # # #) AND NOT(#1 # # #)']
-#     for dsl in examples:
-#         print(f"DSL: {dsl}")
-#         for idiom in searcher.search(dsl):
-#             print("  ", idiom['word'], idiom['pinyin_numeric_parts'], idiom['strokes'])
-#         print()
+# searcher = IdiomSearcher('res/idioms.json')
+# for idiom in searcher.search('(b* #2 da4 #4)'):
+#     print(idiom['word'], idiom['pinyin_numeric_parts'], idiom['strokes'])
