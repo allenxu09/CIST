@@ -93,7 +93,7 @@ class SeqNode(ASTNode):
                         regex_parts.append(c)
 
                 tone_pat = tone if tone else '[1-5]'
-                full_pat = re.compile(rf"^{{0}}{{1}}$".format(''.join(regex_parts), tone_pat))
+                full_pat = re.compile(rf"^{''.join(regex_parts)}{tone_pat}$")
 
                 if not full_pat.match(pinyin_parts[idx]):
                     return False
