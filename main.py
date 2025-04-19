@@ -56,9 +56,11 @@ for item in idioms:
             explanation_index[word].append(item)
 
 def search_mixed(query: str):
-    if '(' or ')' not in query:
-        query = '(' + query + ')'
-    return searcher.search(query)
+    query = '(' + query + ')'
+    response = searcher.search(query)
+    for item in response:
+        item.pop('pinyin_numeric_parts', None)
+    return response
 
 def search_by_word(query: str, exact_match: bool = False):
     if exact_match:
