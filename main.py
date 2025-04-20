@@ -58,8 +58,6 @@ for item in idioms:
 def search_mixed(query: str):
     query = '(' + query + ')'
     response = searcher.search(query)
-    for item in response:
-        item.pop('pinyin_numeric_parts', None)
     return response
 
 def search_by_word(query: str, exact_match: bool = False):
