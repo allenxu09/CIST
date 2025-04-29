@@ -10,9 +10,9 @@
 import json
 import re
 
-IDIOMS_FILE  = "res/idiom.json"
+IDIOMS_FILE  = "res/idiom_new.json"
 STROKES_FILE = "res/strokes.json"
-OUT_FILE     = "idioms_with_strokes_tones.json"
+OUT_FILE     = "res/idioms_new.json"
 
 # ---------- load source files ----------
 with open(IDIOMS_FILE,  encoding="utf-8") as f:

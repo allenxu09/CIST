@@ -40,10 +40,6 @@ FINALS = [
 ]
 
 
-print(len(FINALS))
-
-
-
 class ASTNode:
     def match(self, idiom: Dict[str, Any]) -> bool:
         raise NotImplementedError
@@ -162,7 +158,7 @@ class IncludeNode(ASTNode):
         self.items = items
 
     def match(self, idiom: Dict[str, Any]) -> bool:
-        return any(
+        return all(
             any(item in part for part in idiom['pinyin_numeric_parts'])
             for item in self.items
         )
@@ -313,6 +309,6 @@ class IdiomSearcher:
         ast, pos = self._parse(self._tokenize(dsl))
         return [idiom for idiom in self.idioms if ast.match(idiom)]
 
-if __name__ == '__main__':
-    searcher = IdiomSearcher('res/idioms.json')
-    print(searcher.search('(# # meng shou)'))
+# if __name__ == '__main__':
+#     searcher = IdiomSearcher('res/idioms_new.json')
+#     print(searcher.search('(?i1 #3 #2 #) AND INCLUDE(q,i,ing,sh) AND EXCLUDE(uo,d,ui,iang,x,un)'))

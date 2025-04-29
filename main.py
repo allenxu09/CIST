@@ -6,7 +6,7 @@ from schemas import *
 from crud import *
 from IdiomSearcher import IdiomSearcher
 
-app = FastAPI(title="成语搜索API", description="提供多种方式搜索中文成语")
+app = FastAPI(title="CIST", description="提供多种方式搜索中文成语")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,11 +17,12 @@ app.add_middleware(
 
 # 加载JSON数据
 try:
-    with open('res/idiom.json', 'r', encoding='utf-8') as file:
+    with open('res/idiom_new.json', 'r', encoding='utf-8') as file:
         idioms = json.load(file)
 except Exception as e:
     raise RuntimeError(f"Error loading JSON file: {str(e)}")
-searcher = IdiomSearcher('res/idioms.json')
+
+searcher = IdiomSearcher('res/idioms_new.json')
 
 pinyin_index = {}
 first_char_index = {}
@@ -57,8 +58,12 @@ for item in idioms:
 
 def search_mixed(query: str):
     query = '(' + query + ')'
-    response = searcher.search(query)
-    return response
+    try:
+        response = searcher.search(query)
+        return response
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=404, detail="无效的表达式")
 
 def search_by_word(query: str, exact_match: bool = False):
     if exact_match:
@@ -86,7 +91,7 @@ def search_by_regex(pattern: str):
 
 @app.get("/")
 async def get_root():
-    return {"message": "成语搜索API", "time": time.time()}
+    return {"message": "CIST", "time": time.time()}
 
 @app.post("/search", response_model=SearchResponse)
 async def search(request: SearchRequest):
