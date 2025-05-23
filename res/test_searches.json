@@ -1,0 +1,22 @@
+[
+    {
+        "expression": "(#1 l%2 #2 #4) AND INCLUDE(un) AND EXCLUDE(sh,uo,d,ui,iang,x,j,q) AND NOT (?un # # #)",
+        "expected": "not_empty"
+    },
+    {
+        "expression": "(#)",
+        "expected": "empty"
+    },
+    {
+        "expression": "(#3 #4 #2 sh%1) AND INCLUDE(b) AND EXCLUDE(t,d,q,j,l,iang,x,un)",
+        "expected": "not_empty"
+    },
+    {
+        "expression": "(#3 #4 #2 sh%1) AND EXCLUDE(uo,d,ui) AND INCLUDE(b,ong) AND NOT (b% # # #) AND NOT (# # ?ong #)",
+        "expected": "not_empty"
+    },
+    {
+        "expression": "(#3 #4 #2 sh*1) AND EXCLUDE(d,q,j,l,iang,x,un) AND INCLUDE(b) AND NOT (b% # # #)",
+        "expected": "not_empty"
+    }
+]

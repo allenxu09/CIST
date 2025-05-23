@@ -308,7 +308,3 @@ class IdiomSearcher:
     def search(self, dsl: str) -> List[Dict[str, Any]]:
         ast, pos = self._parse(self._tokenize(dsl))
         return [idiom for idiom in self.idioms if ast.match(idiom)]
-
-# if __name__ == '__main__':
-#     searcher = IdiomSearcher('res/idioms_new.json')
-#     print(searcher.search('(?i1 #3 #2 #) AND INCLUDE(q,i,ing,sh) AND EXCLUDE(uo,d,ui,iang,x,un)'))
