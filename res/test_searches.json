@@ -18,5 +18,9 @@
     {
         "expression": "(#3 #4 #2 sh*1) AND EXCLUDE(d,q,j,l,iang,x,un) AND INCLUDE(b) AND NOT (b% # # #)",
         "expected": "not_empty"
+    },
+    {
+        "expression": "(一 # 一 #)",
+        "expected": "not_empty"
     }
 ]

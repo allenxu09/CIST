@@ -61,6 +61,9 @@ class SeqNode(ASTNode):
         # compile a single regex to parse slot DSL
         self.slot_re = re.compile(r'''
             ^(?:
+                # Chinese character
+                (?P<hanzi>[\u4e00-\u9fff])
+                |
                 # tone+stroke, e.g. #3[10]
                 \#(?P<h_p>[1-5])?\[(?P<h_s>\d+)(?:-(?P<h_s2>\d+))?\]
                 |
@@ -88,6 +91,13 @@ class SeqNode(ASTNode):
             if not m:
                 return False
             gd = m.groupdict()
+
+            # handle Chinese character match
+            if gd['hanzi']:
+                if word[idx] != gd['hanzi']:
+                    return False
+                continue
+
             # handle tone+stroke or tone-only or wildcard #
             if slot.startswith('#'):
                 # tone-only
@@ -287,8 +297,8 @@ class IdiomSearcher:
             return RegexNode(tok[1:-1]), pos + 1
         if tok == '(':
             nxt = tokens[pos + 1]
-            # sequence
-            if re.match(r'^[#\[a-z@%?*]', nxt):
+            # sequence - check for sequence patterns (includes Chinese characters)
+            if re.match(r'^[#\[a-z@%?*\u4e00-\u9fff]', nxt):
                 end = pos + 1
                 depth = 0
                 while end < len(tokens):
@@ -303,6 +313,9 @@ class IdiomSearcher:
             # grouped expression
             child, newpos = self._parse(tokens, pos + 1)
             return child, newpos + 1
+        # Handle standalone Chinese characters or other slot patterns
+        if re.match(r'^[#\[a-z@%?*\u4e00-\u9fff]', tok):
+            return SeqNode([tok]), pos + 1
         raise ValueError(f"Unexpected token: {tok}")
 
     def search(self, dsl: str) -> List[Dict[str, Any]]:
