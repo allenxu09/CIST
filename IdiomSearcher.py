@@ -171,6 +171,9 @@ class IncludeNode(ASTNode):
         return all(
             any(item in part for part in idiom['pinyin_numeric_parts'])
             for item in self.items
+        ) or all(
+            any(item in part for part in idiom['word'])
+            for item in self.items
         )
 
 
@@ -209,12 +212,12 @@ class IdiomSearcher:
         tokens = []
         i, L = 0, len(dsl)
         while i < L:
-            if dsl.startswith('INCLUDE(', i):
+            if (dsl.startswith('INCLUDE(', i) or dsl.startswith('include(', i)):
                 tokens.append('INCLUDE')
                 tokens.append('(')
                 i += len('INCLUDE(')
                 continue
-            if dsl.startswith('EXCLUDE(', i):
+            if (dsl.startswith('EXCLUDE(', i) or dsl.startswith('exclude(', i)):
                 tokens.append('EXCLUDE')
                 tokens.append('(')
                 i += len('EXCLUDE(')
@@ -222,15 +225,15 @@ class IdiomSearcher:
             if dsl[i].isspace():
                 i += 1
                 continue
-            if dsl.startswith('AND', i) and (i + 3 == L or not dsl[i+3].isalpha()):
+            if (dsl.startswith('AND', i) or dsl.startswith('and', i)) and (i + 3 == L or not dsl[i+3].isalpha()):
                 tokens.append('AND')
                 i += 3
                 continue
-            if dsl.startswith('OR', i) and (i + 2 == L or not dsl[i+2].isalpha()):
+            if (dsl.startswith('OR', i) or dsl.startswith('or', i)) and (i + 2 == L or not dsl[i+2].isalpha()):
                 tokens.append('OR')
                 i += 2
                 continue
-            if dsl.startswith('NOT', i) and (i + 3 == L or not dsl[i+3].isalpha()):
+            if (dsl.startswith('NOT', i) or dsl.startswith('not', i)) and (i + 3 == L or not dsl[i+3].isalpha()):
                 tokens.append('NOT')
                 i += 3
                 continue

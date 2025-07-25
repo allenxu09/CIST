@@ -22,5 +22,9 @@
     {
         "expression": "(一 # 一 #)",
         "expected": "not_empty"
+    },
+    {
+        "expression": "include(你)",
+        "expected": "not_empty"
     }
 ]
